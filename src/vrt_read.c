@@ -11,6 +11,8 @@
 #include "vrt_fixed_point.h"
 #include "vrt_util_internal.h"
 
+#include <arpa/inet.h>
+
 /**
  * Shift and mask a specified number of consecutive bits from a specified position in a word.
  *
@@ -22,7 +24,7 @@
  */
 static inline uint32_t mskr(uint32_t val, uint32_t pos, uint32_t n) {
     uint32_t mask = (1U << n) - 1;
-    return (val >> pos) & mask;
+    return (ntohl(val) >> pos) & mask;
 }
 
 /**
@@ -33,7 +35,8 @@ static inline uint32_t mskr(uint32_t val, uint32_t pos, uint32_t n) {
  * \return uint64.
  */
 static inline uint64_t read_uint64(const uint32_t* b) {
-    return (uint64_t)b[0] << 32U | (uint64_t)b[1];
+    // return (uint64_t)b[0] << 32U | (uint64_t)b[1];
+    return (uint64_t)ntohl(b[0]) << 32U | (uint64_t)ntohl(b[1]); 
 }
 
 int32_t vrt_read_header(const void* buf, int32_t words_buf, struct vrt_header* header, bool validate) {
@@ -73,7 +76,7 @@ int32_t vrt_read_header(const void* buf, int32_t words_buf, struct vrt_header* h
                 return VRT_ERR_TSM_IN_DATA;
             }
         }
-        if ((b & 0x02000000U) != 0) {
+        if ((ntohl(b) & 0x02000000U) != 0) {
             return VRT_ERR_RESERVED;
         }
     }
@@ -96,7 +99,7 @@ int32_t vrt_read_fields(const struct vrt_header* header,
     const uint32_t* b = ((const uint32_t*)buf);
 
     if (vrt_has_stream_id(header)) {
-        fields->stream_id = b[0];
+        fields->stream_id = ntohl(b[0]);
         b += 1;
     } else {
         /* Zero Stream ID here, just to be sure */
@@ -106,10 +109,10 @@ int32_t vrt_read_fields(const struct vrt_header* header,
     if (header->has.class_id) {
         fields->class_id.oui                    = mskr(b[0], 0, 24);
         fields->class_id.information_class_code = (uint16_t)mskr(b[1], 16, 16);
-        fields->class_id.packet_class_code      = (uint16_t)b[1];
+        fields->class_id.packet_class_code      = ntohl((uint16_t)b[1]);
 
         if (validate) {
-            if ((b[0] & 0xFF000000U) != 0) {
+            if ((ntohl(b[0]) & 0xFF000000U) != 0) {
                 return VRT_ERR_RESERVED;
             }
         }
@@ -126,7 +129,7 @@ int32_t vrt_read_fields(const struct vrt_header* header,
         /* Zero integer timestamp here, just to be sure */
         fields->integer_seconds_timestamp = 0;
     } else {
-        fields->integer_seconds_timestamp = b[0];
+        fields->integer_seconds_timestamp = ntohl(b[0]);
         b += 1;
     }
 
@@ -284,7 +287,7 @@ static int32_t if_context_read_indicator_field(uint32_t b, struct vrt_if_context
     c->has.context_association_lists      = vrt_u2b(mskr(b, 8, 1));
 
     if (validate) {
-        if ((b & 0x000000FFU) != 0) {
+        if ((ntohl(b) & 0x000000FFU) != 0) {
             return VRT_ERR_RESERVED;
         }
     }
@@ -360,7 +363,7 @@ static int32_t if_context_read_state_and_event_indicators(bool                  
         s->user_defined = (uint8_t)mskr(b, 0, 8);
 
         if (validate) {
-            if ((b & 0x00F00F00U) != 0) {
+            if ((ntohl(b) & 0x00F00F00U) != 0) {
                 return VRT_ERR_RESERVED;
             }
         }
@@ -426,7 +429,7 @@ static int32_t if_context_read_data_packet_payload_format(bool                  
                 return VRT_ERR_INVALID_DATA_ITEM_FORMAT;
             }
 
-            if ((b[0] & 0x0000F000U) != 0) {
+            if ((ntohl(b[0]) & 0x0000F000U) != 0) {
                 return VRT_ERR_RESERVED;
             }
         }
@@ -763,7 +766,7 @@ int32_t vrt_read_if_context(const void* buf, int32_t words_buf, struct vrt_if_co
     }
 
     if (if_context->has.reference_point_identifier) {
-        if_context->reference_point_identifier = b[0];
+        if_context->reference_point_identifier = ntohl(b[0]);
         b += 1;
     } else {
         if_context->reference_point_identifier = 0;
@@ -810,10 +813,10 @@ int32_t vrt_read_if_context(const void* buf, int32_t words_buf, struct vrt_if_co
     }
     if (if_context->has.reference_level) {
         if_context->reference_level =
-            vrt_fixed_point_i16_to_float((int16_t)(b[0] & 0x0000FFFFU), VRT_RADIX_REFERENCE_LEVEL);
+            vrt_fixed_point_i16_to_float((int16_t)(ntohl(b[0]) & 0x0000FFFFU), VRT_RADIX_REFERENCE_LEVEL);
 
         if (validate) {
-            if ((b[0] & 0xFFFF0000U) != 0) {
+            if ((ntohl(b[0]) & 0xFFFF0000U) != 0) {
                 return VRT_ERR_RESERVED;
             }
         }
@@ -823,8 +826,8 @@ int32_t vrt_read_if_context(const void* buf, int32_t words_buf, struct vrt_if_co
         if_context->reference_level = 0.0F;
     }
     if (if_context->has.gain) {
-        int16_t fp1             = b[0] & 0x0000FFFFU;
-        int16_t fp2             = (b[0] >> 16U) & 0x0000FFFFU;
+        int16_t fp1             = ntohl(b[0]) & 0x0000FFFFU;
+        int16_t fp2             = (ntohl(b[0]) >> 16U) & 0x0000FFFFU;
         if_context->gain.stage1 = vrt_fixed_point_i16_to_float(fp1, VRT_RADIX_GAIN);
         if_context->gain.stage2 = vrt_fixed_point_i16_to_float(fp2, VRT_RADIX_GAIN);
 
@@ -842,7 +845,7 @@ int32_t vrt_read_if_context(const void* buf, int32_t words_buf, struct vrt_if_co
         if_context->gain.stage2 = 0.0F;
     }
     if (if_context->has.over_range_count) {
-        if_context->over_range_count = b[0];
+        if_context->over_range_count = ntohl(b[0]);
         b += 1;
     } else {
         if_context->over_range_count = 0;
@@ -867,7 +870,7 @@ int32_t vrt_read_if_context(const void* buf, int32_t words_buf, struct vrt_if_co
         if_context->timestamp_adjustment = 0;
     }
     if (if_context->has.timestamp_calibration_time) {
-        if_context->timestamp_calibration_time = b[0];
+        if_context->timestamp_calibration_time = ntohl(b[0]);
         b += 1;
     } else {
         if_context->timestamp_calibration_time = 0;
@@ -879,7 +882,7 @@ int32_t vrt_read_if_context(const void* buf, int32_t words_buf, struct vrt_if_co
             if (if_context->temperature < VRT_MIN_TEMPERATURE) {
                 return VRT_ERR_BOUNDS_TEMPERATURE;
             }
-            if ((b[0] & 0xFFFF0000U) != 0) {
+            if ((ntohl(b[0]) & 0xFFFF0000U) != 0) {
                 return VRT_ERR_RESERVED;
             }
         }
@@ -893,7 +896,7 @@ int32_t vrt_read_if_context(const void* buf, int32_t words_buf, struct vrt_if_co
         if_context->device_identifier.device_code = (uint16_t)mskr(b[1], 0, 16);
 
         if (validate) {
-            if ((b[0] & 0xFF000000U) != 0 || (b[1] & 0xFFFF0000U) != 0) {
+            if ((ntohl(b[0]) & 0xFF000000U) != 0 || (ntohl(b[1]) & 0xFFFF0000U) != 0) {
                 return VRT_ERR_RESERVED;
             }
         }
@@ -938,7 +941,7 @@ int32_t vrt_read_if_context(const void* buf, int32_t words_buf, struct vrt_if_co
     }
     b += rv;
     if (if_context->has.ephemeris_reference_identifier) {
-        if_context->ephemeris_reference_identifier = b[0];
+        if_context->ephemeris_reference_identifier = ntohl(b[0]);
         b += 1;
     } else {
         if_context->ephemeris_reference_identifier = 0;

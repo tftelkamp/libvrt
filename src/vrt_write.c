@@ -11,6 +11,8 @@
 #include "vrt_fixed_point.h"
 #include "vrt_util_internal.h"
 
+#include <arpa/inet.h>
+
 /**
  * Mask a specified number of consecutive bits and shift them to a position in a word.
  *
@@ -32,8 +34,10 @@ static inline uint32_t mskw(uint32_t val, uint32_t pos, uint32_t n) {
  * \param b   Buffer to write to.
  */
 static inline void write_uint64(uint64_t val, uint32_t* b) {
-    b[0] = (uint32_t)(val >> 32U);
-    b[1] = (uint32_t)val;
+    // b[0] = (uint32_t)(val >> 32U);
+    // b[1] = (uint32_t)val;
+    val = htobe64(val);
+    memcpy(b, &val, sizeof(val));
 }
 
 int32_t vrt_write_header(const struct vrt_header* header, void* buf, int32_t words_buf, bool validate) {
@@ -89,6 +93,8 @@ int32_t vrt_write_header(const struct vrt_header* header, void* buf, int32_t wor
     b[0] |= mskw(header->packet_count, 16, 4);
     b[0] |= header->packet_size;
 
+    b[0] = htonl(b[0]);
+
     return words;
 }
 
@@ -107,7 +113,7 @@ int32_t vrt_write_fields(const struct vrt_header* header,
     uint32_t* b = ((uint32_t*)buf);
 
     if (vrt_has_stream_id(header)) {
-        b[0] = fields->stream_id;
+        b[0] = htonl(fields->stream_id);
         b += 1;
     }
     if (header->has.class_id) {
@@ -117,12 +123,12 @@ int32_t vrt_write_fields(const struct vrt_header* header,
             }
         }
 
-        b[0] = mskw(fields->class_id.oui, 0, 24);
-        b[1] = mskw(fields->class_id.information_class_code, 16, 16) | fields->class_id.packet_class_code;
+        b[0] = htonl(mskw(fields->class_id.oui, 0, 24));
+        b[1] = htonl(mskw(fields->class_id.information_class_code, 16, 16) | fields->class_id.packet_class_code);
         b += 2;
     }
     if (header->tsi != VRT_TSI_NONE) {
-        b[0] = fields->integer_seconds_timestamp;
+        b[0] = htonl(fields->integer_seconds_timestamp);
         b += 1;
     }
     if (vrt_has_fractional_timestamp(header->tsf)) {
@@ -213,6 +219,8 @@ int32_t vrt_write_trailer(const struct vrt_trailer* trailer, void* buf, int32_t 
         b[0] |= mskw(1, 7, 1);
     }
 
+    b[0] = htonl(b[0]);
+
     return words;
 }
 
@@ -252,6 +260,8 @@ static int32_t if_context_write_context_indicator_field(const struct vrt_if_cont
     b[0] |= mskw(vrt_b2u(c->has.ephemeris_reference_identifier), 10, 1);
     b[0] |= mskw(vrt_b2u(c->has.gps_ascii), 9, 1);
     b[0] |= mskw(vrt_b2u(c->has.context_association_lists), 8, 1);
+
+    b[0] = htonl(b[0]);
 
     return 1;
 }
@@ -306,6 +316,8 @@ static int32_t if_context_write_state_and_event_indicator_field(bool            
         }
 
         b[0] |= mskw(s->user_defined, 0, 8);
+
+        b[0] = htonl(b[0]);
 
         return 1;
     }
@@ -367,7 +379,11 @@ static int32_t if_context_write_data_packet_payload_format(bool                 
         b[0] |= mskw(f->item_packing_field_size, 6, 6);
         b[0] |= mskw(f->data_item_size, 0, 6);
 
+        b[0] = htonl(b[0]);
+
         b[1] = mskw(f->repeat_count, 16, 16) | mskw(f->vector_size, 0, 16);
+
+        b[1] = htonl(b[1]);
 
         return 2;
     }
@@ -662,7 +678,7 @@ int32_t vrt_write_if_context(const struct vrt_if_context* if_context, void* buf,
     }
     b += rv;
     if (if_context->has.reference_point_identifier) {
-        b[0] = if_context->reference_point_identifier;
+        b[0] = htonl(if_context->reference_point_identifier);
         b += 1;
     }
     if (if_context->has.bandwidth) {
@@ -720,6 +736,7 @@ int32_t vrt_write_if_context(const struct vrt_if_context* if_context, void* buf,
 
         b[0] = (uint32_t)vrt_float_to_fixed_point_i16(if_context->reference_level, VRT_RADIX_REFERENCE_LEVEL) &
                0x0000FFFFU;
+        b[0] = htonl(b[0]);
         b += 1;
     }
     if (if_context->has.gain) {
@@ -739,10 +756,12 @@ int32_t vrt_write_if_context(const struct vrt_if_context* if_context, void* buf,
         b[0] = ((int32_t)mskw(vrt_float_to_fixed_point_i16(if_context->gain.stage2, VRT_RADIX_GAIN), 16, 16) &
                 0xFFFF0000) |
                ((int32_t)vrt_float_to_fixed_point_i16(if_context->gain.stage1, VRT_RADIX_GAIN) & 0x0000FFFF);
+        b[0] = htonl(b[0]);
         b += 1;
     }
     if (if_context->has.over_range_count) {
         b[0] = if_context->over_range_count;
+        b[0] = htonl(b[0]);
         b += 1;
     }
     if (if_context->has.sample_rate) {
@@ -767,6 +786,7 @@ int32_t vrt_write_if_context(const struct vrt_if_context* if_context, void* buf,
         }
 
         b[0] = (int32_t)vrt_float_to_fixed_point_i16(if_context->temperature, VRT_RADIX_TEMPERATURE) & 0x0000FFFF;
+        b[0] = htonl(b[0]);
         b += 1;
     }
     if (if_context->has.device_identifier) {
@@ -776,8 +796,8 @@ int32_t vrt_write_if_context(const struct vrt_if_context* if_context, void* buf,
             }
         }
 
-        b[0] = mskw(if_context->device_identifier.oui, 0, 24);
-        b[1] = if_context->device_identifier.device_code;
+        b[0] = htonl(mskw(if_context->device_identifier.oui, 0, 24));
+        b[1] = htonl(if_context->device_identifier.device_code);
         b += 2;
     }
     rv = if_context_write_state_and_event_indicator_field(if_context->has.state_and_event_indicators,
@@ -815,7 +835,7 @@ int32_t vrt_write_if_context(const struct vrt_if_context* if_context, void* buf,
     }
     b += rv;
     if (if_context->has.ephemeris_reference_identifier) {
-        b[0] = if_context->ephemeris_reference_identifier;
+        b[0] = htonl(if_context->ephemeris_reference_identifier);
         b += 1;
     }
     rv = if_context_write_gps_ascii(if_context->has.gps_ascii, &if_context->gps_ascii, b, validate);
@@ -901,8 +921,10 @@ int32_t vrt_write_packet(const struct vrt_packet* packet, void* buf, int32_t wor
     }
 
     /* Write packet size directly into buffer to avoid copying const header */
+    b[0] = ntohl(b[0]);
     b[0] &= 0xFFFF0000;
     b[0] |= (uint16_t)words_total;
+    b[0] = htonl(b[0]);
 
     return words_total;
 }
