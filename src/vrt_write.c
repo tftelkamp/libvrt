@@ -13,6 +13,11 @@
 
 #include <arpa/inet.h>
 
+#if defined(__APPLE__)
+#include <libkern/OSByteOrder.h>
+#define htobe64(x) OSSwapHostToBigInt64(x)
+#endif
+
 /**
  * Mask a specified number of consecutive bits and shift them to a position in a word.
  *
