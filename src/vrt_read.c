@@ -876,7 +876,7 @@ int32_t vrt_read_if_context(const void* buf, int32_t words_buf, struct vrt_if_co
         if_context->timestamp_calibration_time = 0;
     }
     if (if_context->has.temperature) {
-        if_context->temperature = vrt_fixed_point_i16_to_float(b[0] & 0x0000FFFFU, VRT_RADIX_TEMPERATURE);
+        if_context->temperature = vrt_fixed_point_i16_to_float(ntohl(b[0]) & 0x0000FFFFU, VRT_RADIX_TEMPERATURE);
 
         if (validate) {
             if (if_context->temperature < VRT_MIN_TEMPERATURE) {
