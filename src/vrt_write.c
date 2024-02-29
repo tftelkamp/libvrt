@@ -782,7 +782,7 @@ int32_t vrt_write_if_context(const struct vrt_if_context* if_context, void* buf,
         b += 2;
     }
     if (if_context->has.timestamp_calibration_time) {
-        b[0] = if_context->timestamp_calibration_time;
+        b[0] = htonl(if_context->timestamp_calibration_time);
         b += 1;
     }
     if (if_context->has.temperature) {
